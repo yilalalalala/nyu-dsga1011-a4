@@ -14,13 +14,19 @@ def setup_wandb(args):
     pass
 
 def initialize_model(args):
-    '''
-    Helper function to initialize the model. You should be either finetuning
-    the pretrained model associated with the 'google-t5/t5-small' checkpoint
-    or training a T5 model initialized with the 'google-t5/t5-small' config
-    from scratch.
-    '''
-    pass
+    checkpoint = "google-t5/t5-small"
+    if args.finetune:
+        model = T5ForConditionalGeneration.from_pretrained(
+            checkpoint, use_safetensors=True,
+        )
+    else:
+        # This branch is for the optional from-scratch setting, not Q5 fine-tuning.
+        config = T5Config.from_pretrained(checkpoint)
+        model = T5ForConditionalGeneration(config)
+
+    # Fine-tune the entire model; no layers are frozen.
+    model.requires_grad_(True)
+    return model.to(DEVICE)
 
 def mkdir(dirpath):
     if not os.path.exists(dirpath):
@@ -30,12 +36,29 @@ def mkdir(dirpath):
             pass
 
 def save_model(checkpoint_dir, model, best):
-    # Save model checkpoint to be able to load the model later
-    pass
+    name = "best" if best else "last"
+    save_dir = os.path.join(checkpoint_dir, name)
+    mkdir(save_dir)
+    model.save_pretrained(save_dir, safe_serialization=True)
+
+    # The tokenizer vocabulary is unchanged by the Q4 text-marker preprocessing.
+    tokenizer = transformers.T5TokenizerFast.from_pretrained("google-t5/t5-small")
+    tokenizer.save_pretrained(save_dir)
+    print(f"Saved {name} checkpoint: {save_dir}", flush=True)
+
 
 def load_model_from_checkpoint(args, best):
-    # Load model from a checkpoint
-    pass
+    model_type = "ft" if args.finetune else "scr"
+    name = "best" if best else "last"
+    load_dir = os.path.join(
+        "checkpoints", f"{model_type}_experiments", args.experiment_name, name,
+    )
+    if not os.path.isfile(os.path.join(load_dir, "config.json")):
+        raise FileNotFoundError(f"No saved model found at {load_dir}")
+    model = T5ForConditionalGeneration.from_pretrained(
+        load_dir, local_files_only=True, use_safetensors=True,
+    )
+    return model.to(DEVICE)
 
 def initialize_optimizer_and_scheduler(args, model, epoch_length):
     optimizer = initialize_optimizer(args, model)

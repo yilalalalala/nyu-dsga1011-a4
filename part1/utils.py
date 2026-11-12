@@ -44,7 +44,36 @@ def custom_transform(example):
 
     # You should update example["text"] using your transformation
 
-    raise NotImplementedError
+    import hashlib
+    import re
+
+    text = example["text"]
+
+    # The same review always gets the same transformation.
+    seed = int(hashlib.sha256(text.encode("utf-8")).hexdigest()[:16], 16)
+    rng = random.Random(seed)
+
+    def introduce_typo(match):
+        word = match.group(0)
+
+        if len(word) < 4 or rng.random() >= 0.30:
+            return word
+
+        # Keep the first and last letters unchanged.
+        positions = [
+            i for i in range(1, len(word) - 2)
+            if word[i].lower() != word[i + 1].lower()
+        ]
+        if not positions:
+            return word
+
+        i = rng.choice(positions)
+        letters = list(word)
+        letters[i], letters[i + 1] = letters[i + 1], letters[i]
+        return "".join(letters)
+
+    example["text"] = re.sub(r"\b[A-Za-z]+\b", introduce_typo, text)
+    return example
 
     ##### YOUR CODE ENDS HERE ######
 

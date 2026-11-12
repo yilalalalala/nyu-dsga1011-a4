@@ -45,7 +45,23 @@ def do_train(args, model, train_dataloader, save_dir="./out"):
     # You can use progress_bar.update(1) to see the progress during training
     # You can refer to the pytorch tutorial covered in class for reference
 
-    raise NotImplementedError
+    for epoch in range(num_epochs):
+        for batch in train_dataloader:
+            batch = {k: v.to(device) for k, v in batch.items()}
+
+            optimizer.zero_grad()
+
+            outputs = model(**batch)
+            loss = outputs.loss
+            loss.backward()
+
+            optimizer.step()
+            lr_scheduler.step()
+
+            progress_bar.update(1)
+            progress_bar.set_postfix(loss=loss.item())
+
+    progress_bar.close()
 
     ##### YOUR CODE ENDS HERE ######
 
@@ -93,8 +109,47 @@ def create_augmented_dataloader(args, dataset):
     # dataloader will be for the original training split augmented with 5k random transformed examples from the training set.
     # You may find it helpful to see how the dataloader was created at other place in this code.
 
-    raise NotImplementedError
+    # Select 5,000 training examples reproducibly.
+    selected_dataset = (
+        dataset["train"]
+        .shuffle(seed=42)
+        .select(range(5000))
+    )
 
+    # Apply the same transformation used in Q2.
+    transformed_dataset = selected_dataset.map(
+        custom_transform,
+        load_from_cache_file=False,
+    )
+
+    # Retain all original examples and add the transformed copies.
+    augmented_dataset = datasets.concatenate_datasets([
+        dataset["train"],
+        transformed_dataset,
+    ])
+
+    # Prepare the combined dataset for BERT.
+    tokenized_augmented_dataset = augmented_dataset.map(
+        tokenize_function,
+        batched=True,
+        load_from_cache_file=False,
+    )
+    tokenized_augmented_dataset = (
+        tokenized_augmented_dataset.remove_columns(["text"])
+    )
+    tokenized_augmented_dataset = (
+        tokenized_augmented_dataset.rename_column("label", "labels")
+    )
+    tokenized_augmented_dataset.set_format("torch")
+
+    train_dataloader = DataLoader(
+        tokenized_augmented_dataset,
+        shuffle=True,
+        batch_size=args.batch_size,
+    )
+
+    print("Augmented training examples:", len(tokenized_augmented_dataset))
+    print("Augmented training batches:", len(train_dataloader))
     ##### YOUR CODE ENDS HERE ######
 
     return train_dataloader
